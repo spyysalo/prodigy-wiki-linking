@@ -7,7 +7,8 @@ from logging import warning
 
 from prodigy.util import set_hashes
 
-from el_kb import TsvKnowledgeBase
+from standoff import ann_stream
+from el_kb import SqliteKnowledgeBase
 
 
 def iso8601_now():
@@ -41,7 +42,7 @@ def make_prodigy_example(text, span):
 
 def format_option(count, qid, label, desc):
     prefix = 'https://www.wikidata.org/wiki/'
-    return f'<a href="{prefix}{qid}" target="_blank">{label}</a>: {desc}'
+    return f'<a href="{prefix}{qid}" target="_blank">{label}</a> ({count}): {desc}'
 
 
 def add_options(stream, kb):
@@ -68,12 +69,12 @@ def add_options(stream, kb):
     dataset=('The dataset to use', 'positional', None, str),
     annotator=('Annotator name', 'positional', None, str),
     directory=('The source data directory', 'positional', None, Path),
-    kb_directory=('Path to the KB', 'positional', None, Path),
+    kbpath=('Path to the KB', 'positional', None, Path),
 )
-def entity_linker_manual(dataset, annotator, directory, kb_directory):
-    kb = TsvKnowledgeBase(kb_directory, 'data/fi-lemmas.tsv')
+def entity_linker_manual(dataset, annotator, directory, kbpath):
+    kb = SqliteKnowledgeBase(kbpath, 'data/fi-lemmas.tsv')
     stream = ann_stream(directory)
-    stream = (make_prodigy_example(sent, span) for sent, span in ann_stream)
+    stream = (make_prodigy_example(sent, span) for sent, span in stream)
     stream = add_options(stream, kb)
 
     def before_db(examples):

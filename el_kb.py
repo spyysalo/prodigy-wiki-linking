@@ -109,8 +109,10 @@ class KnowledgeBase:
         yield string
 
     def candidates(self, string):
+        matches = []
         for s in unique(self.variants(string)):
-            return self.exact_match_candidates(s)
+            matches.extend(self.exact_match_candidates(s))
+        return matches
 
     def exact_match_candidates(self, string):
         raise NotImplementedError
