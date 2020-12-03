@@ -49,7 +49,13 @@ class KnowledgeBase:
         matches = []
         for s in unique(self.variants(string)):
             matches.extend(self.exact_match_candidates(s))
-        return matches
+        matches.sort(reverse=True)    # descending by count
+        seen, uniq = set(), []
+        for count, qid, title, desc in matches:
+            if title not in seen:
+                uniq.append((count, qid, title, desc))
+            seen.add(title)
+        return uniq
 
     def exact_match_candidates(self, string):
         raise NotImplementedError
@@ -64,59 +70,14 @@ class SqliteKnowledgeBase(KnowledgeBase):
         if string not in self.db:
             return []
         result = []
-        for qid, data in self.db[string].items():
-            title, desc = data['title'], data['description']
-            if title is None:
-                title = '[no title]'
-            if desc is None:
-                desc = '[no description]'
+        for title, data in self.db[string].items():
+            qid, desc = data['qid'], data['description']
             result.append((data['count'], qid, title, desc))
         result.sort(reverse=True)    # highest count first
         return result
 
 
-class TsvKnowledgeBase:
-    def __init__(self, kbdir, lemmafn):
-        super().__init__(lemmafn)
-        self.aliases = load_wd_aliases(os.path.join(kbdir, 'entity_alias.csv'))
-        self.descriptions = load_descriptions(
-            os.path.join(kbdir, 'entity_descriptions.csv'))
-        self.titles = load_title_wdid_mapping(
-            os.path.join(kbdir, 'entity_defs.csv'))
-        self.counts = load_counts(os.path.join(kbdir, 'prior_prob.csv'))
-
-        self.qids_by_text = defaultdict(set)
-        for qid, aliases in self.aliases.items():
-            for alias in aliases:
-                self.qids_by_text[alias].add(qid)
-        for qid, title in self.titles.items():
-            self.qids_by_text[title].add(qid)
-
-    def exact_match_candidates(self, string):
-        result = []
-        for qid in self.qids_by_text.get(string, []):
-            try:
-                title = self.titles[qid]
-            except KeyError:
-                warning(f'missing title for {qid}')
-                title = '[no title]'
-            try:
-                desc = self.descriptions[qid]
-            except KeyError:
-                warning(f'missing description for {qid}')
-                desc = '[no description]'
-            count = 0
-            for q, c in self.counts.get(string, {}).items():
-                if q == qid:
-                    count = c
-                    break
-            result.append((count, qid, title, desc))
-        result.sort(reverse=True)    # highest count first
-        return result
-
-
 def main(argv):
-    # kb = TsvKnowledgeBase('fiwiki-kb', 'data/fi-lemmas.tsv')
     kb = SqliteKnowledgeBase('fiwiki.sqlite', 'data/fi-lemmas.tsv')
     stream = ann_stream('data/ann')
     for sent, span in stream:

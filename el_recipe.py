@@ -40,9 +40,16 @@ def make_prodigy_example(text, span):
     return example
 
 
-def format_option(count, qid, label, desc):
-    prefix = 'https://www.wikidata.org/wiki/'
-    return f'<a href="{prefix}{qid}" target="_blank">{label}</a> ({count}): {desc}'
+def format_option(count, qid, title, description):
+    wp_prefix = 'https://fi.wikipedia.org/wiki/'
+    wd_prefix = 'https://www.wikidata.org/wiki/'
+    return ''.join([
+        f'{title} (',
+        f'<a href="{wp_prefix}{title}" target="_blank">[WP]</a>',
+        f'<a href="{wd_prefix}{qid}" target="_blank">[WD]</a>' if qid else '',
+        f') ({count})',
+        f': {description}' if description else ''
+    ])
 
 
 def add_options(stream, kb):
@@ -50,9 +57,9 @@ def add_options(stream, kb):
         for span in task['spans']:
             options = []
             for candidate in kb.candidates(span['text']):
-                count, qid, label, desc = candidate
+                count, qid, title, desc = candidate
                 options.append({
-                    'id': qid,
+                    'id': title,
                     'html': format_option(*candidate),
                 })
             if not options:
