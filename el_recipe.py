@@ -71,7 +71,7 @@ def add_options(stream, kb):
     kb_directory=('Path to the KB', 'positional', None, Path),
 )
 def entity_linker_manual(dataset, annotator, directory, kb_directory):
-    kb = TsvKnowledgeBase(kb_directory)
+    kb = TsvKnowledgeBase(kb_directory, 'data/fi-lemmas.tsv')
     stream = ann_stream(directory)
     stream = (make_prodigy_example(sent, span) for sent, span in ann_stream)
     stream = add_options(stream, kb)

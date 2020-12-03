@@ -1,8 +1,9 @@
 import sys
 import os
+import re
 
 from collections import defaultdict
-from logging import error
+from logging import warning
 
 from standoff import ann_stream
 
@@ -70,14 +71,36 @@ def load_counts(fn, label_by_qid):
     return counts_by_alias
 
 
+def load_lemma_data(fn):
+    lemma_data = defaultdict(list)
+    with open(fn) as f:
+        for ln, l in enumerate(f, start=1):
+            l = l.rstrip('\n')
+            if l.startswith('#'):
+                continue    # skip comments
+            count, form, lemma, pos = l.split('\t')
+            # assume '#' is used to join compound words and remove it
+            # when it appears between two alphabetic characters
+            lemma = re.sub(r'(?<=[^\W\d])#(?=[^\W\d])', r'', lemma)
+            lemma_data[form].append((lemma, pos, count))
+    return lemma_data
+
+
+def unique(sequence):
+    """Return unique items in sequence, preserving order."""
+    # https://www.peterbe.com/plog/fastest-way-to-uniquify-a-list-in-python-3.6
+    return list(dict.fromkeys(sequence))
+
+
 class TsvKnowledgeBase:
-    def __init__(self, directory):
-        self.aliases = load_aliases(os.path.join(directory, 'entity_alias.csv'))
+    def __init__(self, kbdir, lemmafn):
+        self.aliases = load_aliases(os.path.join(kbdir, 'entity_alias.csv'))
         self.descriptions = load_descriptions(
-            os.path.join(directory, 'entity_descriptions.csv'))
-        self.labels = load_labels(os.path.join(directory, 'entity_defs.csv'))
-        self.counts = load_counts(os.path.join(directory, 'prior_prob.csv'),
+            os.path.join(kbdir, 'entity_descriptions.csv'))
+        self.labels = load_labels(os.path.join(kbdir, 'entity_defs.csv'))
+        self.counts = load_counts(os.path.join(kbdir, 'prior_prob.csv'),
                                   self.labels)
+        self.lemma_data = load_lemma_data(lemmafn)
 
         self.qids_by_text = defaultdict(set)
         for qid, aliases in self.aliases.items():
@@ -86,19 +109,33 @@ class TsvKnowledgeBase:
         for qid, label in self.labels.items():
             self.qids_by_text[label].add(qid)
 
+    def lemmatize_last(self, words):
+        for lemma, pos, count in self.lemma_data.get(words[-1], []):
+            yield words[:-1] + [lemma]
+
+    def variants(self, string):
+        words = string.split(' ')    # assume space-separated
+        for lemmatized in self.lemmatize_last(words):
+            yield ' '.join(lemmatized)
+        yield string
+
     def candidates(self, string):
+        for s in unique(self.variants(string)):
+            return self.exact_match_candidates(s)
+
+    def exact_match_candidates(self, string):
         result = []
         for qid in self.qids_by_text.get(string, []):
             try:
                 label = self.labels[qid]
             except KeyError:
-                error(f'missing label for {qid}')
-                continue
+                warning(f'missing label for {qid}')
+                label = '[no label]'
             try:
                 desc = self.descriptions[qid]
             except KeyError:
-                error(f'missing description for {qid}')
-                continue                
+                warning(f'missing description for {qid}')
+                desc = '[no description]'
             count = 0
             for c, q in self.counts.get(string, []):
                 if q == qid:
@@ -110,12 +147,13 @@ class TsvKnowledgeBase:
 
 
 def main(argv):
-    kb = TsvKnowledgeBase('fiwiki-kb-filtered')
+    kb = TsvKnowledgeBase('fiwiki-kb', 'data/fi-lemmas.tsv')
     stream = ann_stream('data/ann')
     for sent, span in stream:
-        for c in kb.candidates(span.text):
-            print(c)
-        else:
+        candidates = kb.candidates(span.text)
+        for c in candidates:
+            print(span.text, c)
+        if not candidates:
             print('MISSED:', span.text)
 
 
