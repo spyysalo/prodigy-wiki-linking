@@ -10,69 +10,6 @@ from sqlitedict import SqliteDict
 from standoff import ann_stream
 
 
-def load_aliases(fn):
-    total = 0
-    aliases_by_qid = defaultdict(list)
-    with open(fn) as f:
-        next(f)    # skip header
-        for ln, l in enumerate(f, start=2):
-            l = l.rstrip('\n')
-            qid, alias = l.split('|', 1)
-            aliases_by_qid[qid].append(alias)
-            total += 1
-    print(f'loaded {total} aliases for {len(aliases_by_qid)} IDs from {fn}',
-          file=sys.stderr)
-    return aliases_by_qid
-
-
-def load_descriptions(fn):
-    desc_by_qid = {}
-    with open(fn) as f:
-        next(f)    # skip header
-        for ln, l in enumerate(f, start=2):
-            l = l.rstrip('\n')
-            qid, description = l.split('|', 1)
-            assert qid not in desc_by_qid, f'dup in {fn}: {qid}'
-            desc_by_qid[qid] = description
-    print(f'loaded {len(desc_by_qid)} descriptions from {fn}',
-          file=sys.stderr)
-    return desc_by_qid
-
-
-def load_titles(fn):
-    title_by_qid = {}
-    with open(fn) as f:
-        next(f)    # skip header
-        for ln, l in enumerate(f, start=2):
-            l = l.rstrip('\n')
-            title, qid = l.split('|')
-            assert qid not in title_by_qid, f'dup in {fn}: {qid}'
-            title_by_qid[qid] = title
-    print(f'loaded {len(title_by_qid)} titles from {fn}',
-          file=sys.stderr)
-    return title_by_qid
-
-
-def load_counts(fn, title_by_qid):
-    failed, total = 0, 0
-    qid_by_title = { v: k for k, v in title_by_qid.items() }
-    counts = defaultdict(lambda: defaultdict(int))
-    with open(fn) as f:
-        next(f)    # skip header
-        for ln, l in enumerate(f, start=2):
-            l = l.rstrip('\n')
-            alias, count, title = l.split('|')
-            count = int(count)
-            try:
-                qid = qid_by_title[title]
-                counts[alias][qid] += count
-            except KeyError:
-                failed += 1
-            total += 1
-    print(f'load_counts: failed mapping for {failed}/{total}', file=sys.stderr)
-    return counts
-
-
 def load_lemma_data(fn):
     lemma_data = defaultdict(list)
     with open(fn) as f:
@@ -139,12 +76,12 @@ class SqliteKnowledgeBase(KnowledgeBase):
 class TsvKnowledgeBase:
     def __init__(self, kbdir, lemmafn):
         super().__init__(lemmafn)
-        self.aliases = load_aliases(os.path.join(kbdir, 'entity_alias.csv'))
+        self.aliases = load_wd_aliases(os.path.join(kbdir, 'entity_alias.csv'))
         self.descriptions = load_descriptions(
             os.path.join(kbdir, 'entity_descriptions.csv'))
-        self.titles = load_titles(os.path.join(kbdir, 'entity_defs.csv'))
-        self.counts = load_counts(os.path.join(kbdir, 'prior_prob.csv'),
-                                  self.titles)
+        self.titles = load_title_wdid_mapping(
+            os.path.join(kbdir, 'entity_defs.csv'))
+        self.counts = load_counts(os.path.join(kbdir, 'prior_prob.csv'))
 
         self.qids_by_text = defaultdict(set)
         for qid, aliases in self.aliases.items():

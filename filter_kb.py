@@ -6,7 +6,8 @@ import os
 from collections import defaultdict
 from argparse import ArgumentParser
 
-from el_kb import load_aliases, load_descriptions, load_titles, load_counts
+from el_kb import load_wd_aliases, load_descriptions, load_title_qid_map
+from el_kb import load_counts
 
 
 def save_aliases(fn, aliases_by_qid):
@@ -50,10 +51,10 @@ def argparser():
 
 def main(argv):
     args = argparser().parse_args(argv[1:])
-    aliases = load_aliases(os.path.join(args.indir, 'entity_alias.csv'))
+    aliases = load_wd_aliases(os.path.join(args.indir, 'entity_alias.csv'))
     descriptions = load_descriptions(
         os.path.join(args.indir, 'entity_descriptions.csv'))
-    titles = load_titles(os.path.join(args.indir, 'entity_defs.csv'))
+    titles = load_title_qid_map(os.path.join(args.indir, 'entity_defs.csv'))
     counts = load_counts(os.path.join(args.indir, 'prior_prob.csv'), titles)
 
     filtered_qids = set()
