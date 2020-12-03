@@ -49,7 +49,7 @@ class KnowledgeBase:
         matches = []
         for s in unique(self.variants(string)):
             matches.extend(self.exact_match_candidates(s))
-        matches.sort(reverse=True)    # descending by count
+        matches.sort(key=lambda c: c[0], reverse=True)    # descending by count
         seen, uniq = set(), []
         for count, qid, title, desc in matches:
             if title not in seen:
@@ -73,7 +73,7 @@ class SqliteKnowledgeBase(KnowledgeBase):
         for title, data in self.db[string].items():
             qid, desc = data['qid'], data['description']
             result.append((data['count'], qid, title, desc))
-        result.sort(reverse=True)    # highest count first
+        result.sort(key=lambda c: c[0], reverse=True)    # highest count first
         return result
 
 
