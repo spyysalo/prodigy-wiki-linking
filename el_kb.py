@@ -2,8 +2,9 @@ import sys
 import os
 
 from collections import defaultdict
-
 from logging import error
+
+from standoff import ann_stream
 
 
 def load_aliases(fn):
@@ -109,9 +110,13 @@ class TsvKnowledgeBase:
 
 
 def main(argv):
-    kb = TsvKnowledgeBase('fiwiki-kb')
-    for c in kb.candidates('Turku'):
-        print(c)
+    kb = TsvKnowledgeBase('fiwiki-kb-filtered')
+    stream = ann_stream('data/ann')
+    for sent, span in stream:
+        for c in kb.candidates(span.text):
+            print(c)
+        else:
+            print('MISSED:', span.text)
 
 
 if __name__ == '__main__':
