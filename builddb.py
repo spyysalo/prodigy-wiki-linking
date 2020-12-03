@@ -28,7 +28,7 @@ def load_wd_aliases(fn):
     return aliases_by_qid
 
 
-def load_title_qid_map(fn):
+def load_title_by_qid(fn):
     """
     Load mapping from Wikipedia titles to Wikidata QIDs.
     """
@@ -61,6 +61,9 @@ def load_descriptions(fn):
 
 def filter_title(title):
     excluded_prefixes = [
+        'Käyttäjä:',
+        'Toiminnot:',
+        'Metasivu:',
         'Luokka:',
         ':Luokka:'
     ]
@@ -99,23 +102,23 @@ def main(argv):
     args = argparser().parse_args(argv[1:])
     aliases = load_wd_aliases(join(args.indir, 'entity_alias.csv'))
     descs = load_descriptions(join(args.indir, 'entity_descriptions.csv'))
-    title_qid_map = load_title_qid_map(join(args.indir, 'entity_defs.csv'))
+    title_by_qid = load_title_by_qid(join(args.indir, 'entity_defs.csv'))
     counts = load_counts(join(args.indir, 'prior_prob.csv'))
 
-    qid_title_map = { v: k for k, v in title_qid_map.items() }
+    qid_by_title = { v: k for k, v in title_by_qid.items() }
 
     # make sure each WD alias is included
     for qid, aliases in aliases.items():
-        if qid not in qid_title_map:
+        if qid not in title_by_qid:
             continue    # unmappable
         for alias in aliases:
-            counts[alias][qid_title_map[qid]] += 0
+            counts[alias][title_by_qid[qid]] += 0
 
     with SqliteDict(args.dbname) as db:
         for string, title_count in tqdm(counts.items()):
             data = {}
             for title, count in title_count.items():
-                qid = title_qid_map.get(title)
+                qid = qid_by_title.get(title)
                 data[title] = {
                     'count': count,
                     'qid': qid,
