@@ -5,6 +5,8 @@ import re
 from collections import defaultdict
 from logging import warning
 
+from sqlitedict import SqliteDict
+
 from standoff import ann_stream
 
 
@@ -37,38 +39,38 @@ def load_descriptions(fn):
     return desc_by_qid
 
 
-def load_labels(fn):
-    label_by_qid = {}
+def load_titles(fn):
+    title_by_qid = {}
     with open(fn) as f:
         next(f)    # skip header
         for ln, l in enumerate(f, start=2):
             l = l.rstrip('\n')
-            label, qid = l.split('|')
-            assert qid not in label_by_qid, f'dup in {fn}: {qid}'
-            label_by_qid[qid] = label
-    print(f'loaded {len(label_by_qid)} labels from {fn}',
+            title, qid = l.split('|')
+            assert qid not in title_by_qid, f'dup in {fn}: {qid}'
+            title_by_qid[qid] = title
+    print(f'loaded {len(title_by_qid)} titles from {fn}',
           file=sys.stderr)
-    return label_by_qid
+    return title_by_qid
 
 
-def load_counts(fn, label_by_qid):
+def load_counts(fn, title_by_qid):
     failed, total = 0, 0
-    qid_by_label = { v: k for k, v in label_by_qid.items() }
-    counts_by_alias = defaultdict(list)
+    qid_by_title = { v: k for k, v in title_by_qid.items() }
+    counts = defaultdict(lambda: defaultdict(int))
     with open(fn) as f:
         next(f)    # skip header
         for ln, l in enumerate(f, start=2):
             l = l.rstrip('\n')
-            alias, count, label = l.split('|')
+            alias, count, title = l.split('|')
             count = int(count)
             try:
-                qid = qid_by_label[label]
-                counts_by_alias[alias].append((count, qid))
+                qid = qid_by_title[title]
+                counts[alias][qid] += count
             except KeyError:
                 failed += 1
             total += 1
     print(f'load_counts: failed mapping for {failed}/{total}', file=sys.stderr)
-    return counts_by_alias
+    return counts
 
 
 def load_lemma_data(fn):
@@ -92,22 +94,9 @@ def unique(sequence):
     return list(dict.fromkeys(sequence))
 
 
-class TsvKnowledgeBase:
-    def __init__(self, kbdir, lemmafn):
-        self.aliases = load_aliases(os.path.join(kbdir, 'entity_alias.csv'))
-        self.descriptions = load_descriptions(
-            os.path.join(kbdir, 'entity_descriptions.csv'))
-        self.labels = load_labels(os.path.join(kbdir, 'entity_defs.csv'))
-        self.counts = load_counts(os.path.join(kbdir, 'prior_prob.csv'),
-                                  self.labels)
+class KnowledgeBase:
+    def __init__(self, lemmafn):
         self.lemma_data = load_lemma_data(lemmafn)
-
-        self.qids_by_text = defaultdict(set)
-        for qid, aliases in self.aliases.items():
-            for alias in aliases:
-                self.qids_by_text[alias].add(qid)
-        for qid, label in self.labels.items():
-            self.qids_by_text[label].add(qid)
 
     def lemmatize_last(self, words):
         for lemma, pos, count in self.lemma_data.get(words[-1], []):
@@ -124,30 +113,72 @@ class TsvKnowledgeBase:
             return self.exact_match_candidates(s)
 
     def exact_match_candidates(self, string):
+        raise NotImplementedError
+
+
+class SqliteKnowledgeBase(KnowledgeBase):
+    def __init__(self, dbfn, lemmafn):
+        super().__init__(lemmafn)
+        self.db = SqliteDict(dbfn, flag='r')
+
+    def exact_match_candidates(self, string):
+        if string not in self.db:
+            return []
+        result = []
+        for qid, data in self.db[string].items():
+            title, desc = data['title'], data['description']
+            if title is None:
+                title = '[no title]'
+            if desc is None:
+                desc = '[no description]'
+            result.append((data['count'], qid, title, desc))
+        result.sort(reverse=True)    # highest count first
+        return result
+
+
+class TsvKnowledgeBase:
+    def __init__(self, kbdir, lemmafn):
+        super().__init__(lemmafn)
+        self.aliases = load_aliases(os.path.join(kbdir, 'entity_alias.csv'))
+        self.descriptions = load_descriptions(
+            os.path.join(kbdir, 'entity_descriptions.csv'))
+        self.titles = load_titles(os.path.join(kbdir, 'entity_defs.csv'))
+        self.counts = load_counts(os.path.join(kbdir, 'prior_prob.csv'),
+                                  self.titles)
+
+        self.qids_by_text = defaultdict(set)
+        for qid, aliases in self.aliases.items():
+            for alias in aliases:
+                self.qids_by_text[alias].add(qid)
+        for qid, title in self.titles.items():
+            self.qids_by_text[title].add(qid)
+
+    def exact_match_candidates(self, string):
         result = []
         for qid in self.qids_by_text.get(string, []):
             try:
-                label = self.labels[qid]
+                title = self.titles[qid]
             except KeyError:
-                warning(f'missing label for {qid}')
-                label = '[no label]'
+                warning(f'missing title for {qid}')
+                title = '[no title]'
             try:
                 desc = self.descriptions[qid]
             except KeyError:
                 warning(f'missing description for {qid}')
                 desc = '[no description]'
             count = 0
-            for c, q in self.counts.get(string, []):
+            for q, c in self.counts.get(string, {}).items():
                 if q == qid:
                     count = c
                     break
-            result.append((count, qid, label, desc))
-            result.sort(reverse=True)    # highest count first
+            result.append((count, qid, title, desc))
+        result.sort(reverse=True)    # highest count first
         return result
 
 
 def main(argv):
-    kb = TsvKnowledgeBase('fiwiki-kb', 'data/fi-lemmas.tsv')
+    # kb = TsvKnowledgeBase('fiwiki-kb', 'data/fi-lemmas.tsv')
+    kb = SqliteKnowledgeBase('fiwiki.sqlite', 'data/fi-lemmas.tsv')
     stream = ann_stream('data/ann')
     for sent, span in stream:
         candidates = kb.candidates(span.text)

@@ -6,7 +6,7 @@ import os
 from collections import defaultdict
 from argparse import ArgumentParser
 
-from el_kb import load_aliases, load_descriptions, load_labels, load_counts
+from el_kb import load_aliases, load_descriptions, load_titles, load_counts
 
 
 def save_aliases(fn, aliases_by_qid):
@@ -24,20 +24,20 @@ def save_descriptions(fn, desc_by_qid):
             print(f'{qid}|{desc}', file=f)
 
 
-def save_labels(fn, label_by_qid):
+def save_titles(fn, title_by_qid):
     with open(fn, 'w') as f:
         print('WP_title|WD_id', file=f)    # header
-        for qid, label in label_by_qid.items():
-            print(f'{label}|{qid}', file=f)
+        for qid, title in title_by_qid.items():
+            print(f'{title}|{qid}', file=f)
 
 
-def save_counts(fn, counts_by_alias, label_by_qid):
+def save_counts(fn, counts_by_alias, title_by_qid):
     with open(fn, 'w') as f:
         print('alias|count|entity', file=f)    # header
         for alias, counts in counts_by_alias.items():
             for count, qid in counts:
-                label = label_by_qid[qid]
-                print(f'{alias}|{count}|{label}', file=f)
+                title = title_by_qid[qid]
+                print(f'{alias}|{count}|{title}', file=f)
 
 
 def argparser():
@@ -53,8 +53,8 @@ def main(argv):
     aliases = load_aliases(os.path.join(args.indir, 'entity_alias.csv'))
     descriptions = load_descriptions(
         os.path.join(args.indir, 'entity_descriptions.csv'))
-    labels = load_labels(os.path.join(args.indir, 'entity_defs.csv'))
-    counts = load_counts(os.path.join(args.indir, 'prior_prob.csv'), labels)
+    titles = load_titles(os.path.join(args.indir, 'entity_defs.csv'))
+    counts = load_counts(os.path.join(args.indir, 'prior_prob.csv'), titles)
 
     filtered_qids = set()
     filtered_counts = defaultdict(list)
@@ -70,15 +70,15 @@ def main(argv):
     print(f'filtered {filtered}/{total} ({filtered/total:.1%}) counts',
           file=sys.stderr)
 
-    filtered_labels = {}
+    filtered_titles = {}
     filtered, total = 0, 0
-    for qid, label in labels.items():
+    for qid, title in titles.items():
         if qid in filtered_qids:
-            filtered_labels[qid] = label
+            filtered_titles[qid] = title
         else:
             filtered += 1
         total += 1
-    print(f'filtered {filtered}/{total} ({filtered/total:.1%}) labels',
+    print(f'filtered {filtered}/{total} ({filtered/total:.1%}) titles',
           file=sys.stderr)
 
     filtered_descs = {}
@@ -108,10 +108,10 @@ def main(argv):
                  filtered_aliases)
     save_descriptions(os.path.join(args.outdir, 'entity_descriptions.csv'),
                       filtered_descs)
-    save_labels(os.path.join(args.outdir, 'entity_defs.csv'),
-                filtered_labels)
+    save_titles(os.path.join(args.outdir, 'entity_defs.csv'),
+                filtered_titles)
     save_counts(os.path.join(args.outdir, 'prior_prob.csv'),
-                filtered_counts, labels)
+                filtered_counts, titles)
     
     return 0
 
