@@ -99,13 +99,21 @@ def ann_stream(directory):
             yield example
 
 
+def format_option(count, qid, label, desc):
+    prefix = 'https://www.wikidata.org/wiki/'
+    return f'<a href="{prefix}{qid}" target="_blank">{label}</a>: {desc}'
+
+
 def add_options(stream, kb):
     for task in stream:
         for span in task['spans']:
             options = []
             for candidate in kb.candidates(span['text']):
                 count, qid, label, desc = candidate
-                options.append({ 'id': qid, 'text': desc })
+                options.append({
+                    'id': qid,
+                    'html': format_option(*candidate),
+                })
             if not options:
                 warning(f'no options for {span["text"]}, skipping...')
                 continue
