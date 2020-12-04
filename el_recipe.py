@@ -1,11 +1,12 @@
 import datetime
+import hashlib
 
 import prodigy
 
 from pathlib import Path
 from logging import warning
 
-from prodigy.util import set_hashes
+from prodigy.components.filters import filter_duplicates
 
 from standoff import ann_stream
 from el_kb import SqliteKnowledgeBase
@@ -16,15 +17,18 @@ def iso8601_now():
     return datetime.datetime.now().replace(microsecond=0).isoformat(' ')
 
 
-def make_prodigy_example(text, span):
+def _hash(string):
+    return int(hashlib.sha1(string.encode('utf-8')).hexdigest(), 16) % 2**31
+
+
+def make_prodigy_example(docid, text, span):
     # Construct a dictionary with the structure that prodigy expects
     example = {
         'text': text,
         'meta': { 'score': 1.0 }    # TODO add ID
     }
-    # add _input_hash and _task_hash
-    example = set_hashes(example)
-    span = {
+    example['_input_hash'] = _hash(docid)
+    span_dict = {
         'start': span.start,
         'end': span.end,
         'text': span.text,
@@ -34,9 +38,9 @@ def make_prodigy_example(text, span):
         'score': 1.0,
         'input_hash': example['_input_hash'],
     }
-    example['spans'] = [span]
-    # update _task_hash
-    example = set_hashes(example, overwrite=True)
+    example['spans'] = [span_dict]
+    # add _input_hash and _task_hash values required by prodigy
+    example['_task_hash'] = _hash(f'{docid} {span.id} {span.type} {span.text}')
     return example
 
 
@@ -44,10 +48,10 @@ def format_option(count, qid, title, description):
     wp_prefix = 'https://fi.wikipedia.org/wiki/'
     wd_prefix = 'https://www.wikidata.org/wiki/'
     return ''.join([
-        f'{title} (',
-        f'<a href="{wp_prefix}{title}" target="_blank">[WP]</a>',
-        f'<a href="{wd_prefix}{qid}" target="_blank">[WD]</a>' if qid else '',
-        f') ({count})',
+        f'{title} ',
+        f'<a href="{wp_prefix}{title}" target="_blank">[WP]</a> ',
+        f'<a href="{wd_prefix}{qid}" target="_blank">[WD]</a> ' if qid else '',
+        f'({count})',
         f': {description}' if description else ''
     ])
 
@@ -81,8 +85,9 @@ def add_options(stream, kb):
 def entity_linker_manual(dataset, annotator, directory, kbpath):
     kb = SqliteKnowledgeBase(kbpath, 'data/fi-lemmas.tsv')
     stream = ann_stream(directory)
-    stream = (make_prodigy_example(sent, span) for sent, span in stream)
+    stream = (make_prodigy_example(*e) for e in stream)
     stream = add_options(stream, kb)
+    stream = filter_duplicates(stream, by_input=False, by_task=True)
 
     def before_db(examples):
         for e in examples:

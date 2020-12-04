@@ -41,14 +41,14 @@ def get_span_sentence(text, span):
     # Return the sentence in which the given span occurs in the text.
     # Assumes that sentences are separated by newlines.
     offset = 0
-    for sentence in text.split('\n'):
+    for index, sentence in enumerate(text.split('\n'), start=1):
         if offset+len(sentence) > span.start:
             assert offset+len(sentence) >= span.end
             # Create span with adjusted text
             s, e = span.start - offset, span.end - offset
             sent_span = Textbound(span.id, span.type, s, e, span.text)
             assert sentence[sent_span.start:sent_span.end] == sent_span.text
-            return sentence, sent_span
+            return index, sentence, sent_span
         offset += len(sentence) + 1
 
 
@@ -74,5 +74,5 @@ def ann_stream(directory, exclude=EXCLUDE_BY_DEFAULT):
         spans = [s for s in spans if s.type not in exclude]
 
         for span in spans:
-            sentence, sent_span = get_span_sentence(text, span)
-            yield sentence, sent_span
+            sentidx, sentence, sent_span = get_span_sentence(text, span)
+            yield f'{fn}.{sentidx}', sentence, sent_span
